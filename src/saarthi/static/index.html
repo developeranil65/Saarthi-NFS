@@ -1464,6 +1464,7 @@
                         <div class="chat-messages">`;
 
                 for (const msg of messages) {
+                    if (msg.role === 'system') continue;
                     html += `
                         <div class="chat-msg ${msg.role}">
                             <div class="chat-role">
