@@ -78,7 +78,6 @@ class Database:
                     created_at TEXT NOT NULL
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_calls_vapi_id ON calls(vapi_call_id);
                 CREATE INDEX IF NOT EXISTS idx_calls_user_id ON calls(user_id);
                 CREATE INDEX IF NOT EXISTS idx_calls_status ON calls(status);
                 CREATE INDEX IF NOT EXISTS idx_calls_start_time ON calls(start_time);
@@ -105,6 +104,9 @@ class Database:
                 pass  # Column already exists
             except Exception as e:
                 logger.warning(f"Schema migration error (safe to ignore if table was just created): {e}")
+
+            # Create index after migration to ensure column exists
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_vapi_id ON calls(vapi_call_id);")
 
     # -------------------------------------------------------------------
     # User operations
