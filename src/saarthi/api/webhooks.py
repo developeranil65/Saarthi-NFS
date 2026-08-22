@@ -169,6 +169,13 @@ async def _handle_tool_calls(message: dict[str, Any]) -> JSONResponse:
     vapi_call_id = call_data.get("id", "")
 
     tool_calls = message.get("toolCallList", message.get("toolCalls", []))
+    if not tool_calls and "toolWithToolCallList" in message:
+        # Some Vapi versions wrap it
+        tool_calls = [
+            item.get("toolCall") for item in message["toolWithToolCallList"] 
+            if isinstance(item, dict) and "toolCall" in item
+        ]
+        
     if not tool_calls:
         return JSONResponse({"status": "ok"})
 
@@ -535,8 +542,9 @@ async def _handle_call_ended(message: dict[str, Any]) -> None:
     if conversation_messages:
         await state.db.create_messages(conversation_messages) # type: ignore
 
-    # Run AI analysis via Gemini if we don't have a summary from Vapi
-    if not summary and transcript and state.analyzer:
+    # Run AI analysis via Gemini to get topic, risk, and action items
+    # We do this even if Vapi provided a basic summary, because we need structured data
+    if transcript and state.analyzer:
         try:
             analysis = await state.analyzer.analyze(transcript)
             summary = analysis.summary
