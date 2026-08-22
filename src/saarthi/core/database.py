@@ -94,6 +94,18 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_messages_call_id ON messages(call_id);
             """)
 
+            # Migration for older schemas that might be missing vapi_call_id
+            try:
+                await conn.execute("ALTER TABLE calls ADD COLUMN vapi_call_id TEXT UNIQUE;")
+                # Populate existing rows to satisfy NOT NULL
+                await conn.execute("UPDATE calls SET vapi_call_id = id WHERE vapi_call_id IS NULL;")
+                await conn.execute("ALTER TABLE calls ALTER COLUMN vapi_call_id SET NOT NULL;")
+                logger.info("Successfully migrated schema to include vapi_call_id")
+            except asyncpg.exceptions.DuplicateColumnError:
+                pass  # Column already exists
+            except Exception as e:
+                logger.warning(f"Schema migration error (safe to ignore if table was just created): {e}")
+
     # -------------------------------------------------------------------
     # User operations
     # -------------------------------------------------------------------
