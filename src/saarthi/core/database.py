@@ -105,6 +105,13 @@ class Database:
             except Exception as e:
                 logger.warning(f"Schema migration error (safe to ignore if table was just created): {e}")
 
+            # Migration for legacy Exotel schemas: drop NOT NULL on old columns
+            try:
+                await conn.execute("ALTER TABLE calls ALTER COLUMN exotel_call_sid DROP NOT NULL;")
+                logger.info("Dropped NOT NULL constraint on legacy exotel_call_sid column")
+            except Exception:
+                pass
+
             # Create index after migration to ensure column exists
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_vapi_id ON calls(vapi_call_id);")
 
