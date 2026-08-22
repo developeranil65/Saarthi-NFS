@@ -18,6 +18,7 @@ from saarthi.models.enums import (
     CallTopic,
     MessageRole,
     RiskLevel,
+    RiskType,
 )
 
 
@@ -110,6 +111,13 @@ class Call(BaseModel):
     risk_level: RiskLevel = RiskLevel.LOW
     action_items: list[str] = Field(default_factory=list)
 
+    # Intelligence fields
+    risk_type: RiskType = RiskType.NONE
+    risk_reason: str = ""
+    risk_detected_at: datetime | None = None
+    action_plan: dict | None = None
+    action_plan_generated_at: datetime | None = None
+
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -149,6 +157,7 @@ class CallListItem(BaseModel):
     topic: str
     duration: str
     risk_level: str
+    risk_type: str = "none"
     status: str
     start_time: str
     user_id: str

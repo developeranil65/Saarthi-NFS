@@ -2,6 +2,11 @@
 
 Handles incoming call lifecycle events from the external Vapi voice agent,
 such as call started, status updates, transcripts, and end-of-call reports.
+
+Intelligence features:
+- assistant-request: Returns caller memory as dynamic variables
+- tool-calls: Handles generate_action_plan tool calls
+- transcript: Real-time risk detection
 """
 
 from __future__ import annotations
@@ -16,11 +21,17 @@ from fastapi.responses import JSONResponse
 
 from saarthi.core import state
 from saarthi.models.core import Call, ConversationMessage
-from saarthi.models.enums import CallStatus, CallTopic, MessageRole, RiskLevel
+from saarthi.models.enums import CallStatus, CallTopic, MessageRole, RiskLevel, RiskType
+from saarthi.services.risk_detector import RiskDetector
+from saarthi.services.caller_memory import build_caller_memory
+from saarthi.services.action_plan_generator import generate_action_plan
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/vapi", tags=["Webhooks"])
+
+# Singleton risk detector
+_risk_detector = RiskDetector()
 
 
 @router.post("/webhook")
@@ -28,8 +39,11 @@ async def vapi_webhook(request: Request) -> JSONResponse:
     """Receive and process Vapi call lifecycle events.
 
     Handles the following core flows:
-    1. 'call-started' / 'status-update' (in-progress): Creates or updates an active call record.
-    2. 'end-of-call-report' / 'hang': Finalizes the call, processes the transcript, and triggers AI analysis.
+    1. 'assistant-request': Returns the existing assistant with caller context.
+    2. 'call-started' / 'status-update' (in-progress): Creates or updates an active call record.
+    3. 'transcript': Real-time risk detection on live conversation.
+    4. 'tool-calls': Handles custom tool calls (generate_action_plan).
+    5. 'end-of-call-report' / 'hang': Finalizes the call, processes the transcript, and triggers AI analysis.
 
     Args:
         request: The incoming FastAPI request containing the JSON payload from Vapi.
@@ -54,15 +68,33 @@ async def vapi_webhook(request: Request) -> JSONResponse:
         return JSONResponse({"status": "error", "detail": "Database unavailable"})
 
     try:
-        if event_type in ("call-started", "status-update"):
+        # --- Feature 1: Assistant Request (Caller Memory) ---
+        if event_type == "assistant-request":
+            return await _handle_assistant_request(message)
+
+        # --- Feature 2: Tool Calls (Action Plan) ---
+        elif event_type == "tool-calls":
+            return await _handle_tool_calls(message)
+
+        # --- Existing: Call Started ---
+        elif event_type in ("call-started", "status-update"):
             await _handle_call_started(message)
+
+        # --- Existing: Call Ended ---
         elif event_type in ("end-of-call-report", "hang"):
             await _handle_call_ended(message)
+
+        # --- Feature 3: Transcript (Risk Detection) ---
         elif event_type == "transcript":
-            # Real-time transcript updates can be handled here if needed in the future
-            pass
+            await _handle_transcript(message)
+
+        # --- Conversation update (contains transcript segments) ---
+        elif event_type == "conversation-update":
+            await _handle_conversation_update(message)
+
         else:
             logger.debug("Unhandled Vapi event type: %s", event_type)
+
     except Exception as e:
         logger.error("Error processing Vapi webhook: %s", e, exc_info=True)
         # Return 200 even on error to prevent Vapi from retrying
@@ -70,6 +102,223 @@ async def vapi_webhook(request: Request) -> JSONResponse:
 
     return JSONResponse({"status": "ok"})
 
+
+# ====================================================================
+# FEATURE 1: Assistant Request — Caller Memory
+# ====================================================================
+
+async def _handle_assistant_request(message: dict[str, Any]) -> JSONResponse:
+    """Handle assistant-request from Vapi.
+
+    Looks up the caller's previous call history and returns the existing
+    Saarthi assistant ID with caller_memory as a dynamic variable.
+    """
+    call_data = message.get("call", message)
+    customer = call_data.get("customer", {})
+    phone_number = customer.get("number", "")
+
+    logger.info("Assistant request for phone: %s", phone_number[:6] + "****" if len(phone_number) > 6 else phone_number)
+
+    # Get assistant ID from config
+    assistant_id = ""
+    if state.config:
+        assistant_id = state.config.vapi_assistant_id
+
+    if not assistant_id:
+        logger.warning("VAPI_ASSISTANT_ID not configured. Returning empty response.")
+        return JSONResponse({"error": "Assistant not configured"}, status_code=200)
+
+    # Build caller memory
+    caller_memory = "New caller. No previous conversation history."
+
+    if phone_number and state.db:
+        try:
+            user = await state.db.get_user_by_phone(phone_number)
+            if user:
+                history = await state.db.get_user_call_history(user.id, limit=5)
+                caller_memory = build_caller_memory(history)
+                logger.info("Built caller memory for user %s (%d previous calls)", user.id[:8], len(history))
+        except Exception as e:
+            logger.error("Failed to build caller memory: %s", e)
+
+    # Return the assistant selector response
+    response = {
+        "assistantId": assistant_id,
+        "assistantOverrides": {
+            "variableValues": {
+                "caller_memory": caller_memory,
+            }
+        }
+    }
+
+    logger.info("Returning assistant %s with caller context", assistant_id[:8])
+    return JSONResponse(response)
+
+
+# ====================================================================
+# FEATURE 2: Tool Calls — Action Plan Generator
+# ====================================================================
+
+async def _handle_tool_calls(message: dict[str, Any]) -> JSONResponse:
+    """Handle tool-calls event from Vapi.
+
+    Processes the generate_action_plan function call, generates a plan,
+    saves it to the database, and returns the result to Vapi.
+    """
+    call_data = message.get("call", message)
+    vapi_call_id = call_data.get("id", "")
+
+    tool_calls = message.get("toolCallList", message.get("toolCalls", []))
+    if not tool_calls:
+        return JSONResponse({"status": "ok"})
+
+    results = []
+
+    for tool_call in tool_calls:
+        tool_call_id = tool_call.get("id", "")
+        function_info = tool_call.get("function", tool_call)
+        function_name = function_info.get("name", "")
+
+        if function_name == "generate_action_plan":
+            # Extract arguments
+            args_raw = function_info.get("arguments", {})
+            if isinstance(args_raw, str):
+                try:
+                    args = json.loads(args_raw)
+                except json.JSONDecodeError:
+                    args = {}
+            else:
+                args = args_raw or {}
+
+            problem = args.get("problem", "")
+            relevant_context = args.get("relevant_context", "")
+            caller_goal = args.get("caller_goal", "")
+            urgency = args.get("urgency", "medium")
+
+            logger.info("generate_action_plan called: problem=%s", problem[:80])
+
+            # Generate action plan
+            plan = await generate_action_plan(
+                problem=problem,
+                relevant_context=relevant_context,
+                caller_goal=caller_goal,
+                urgency=urgency,
+                analyzer=state.analyzer,
+            )
+
+            # Save to database
+            if vapi_call_id and state.db:
+                try:
+                    await state.db.update_call_action_plan(vapi_call_id, plan)
+                    logger.info("Action plan saved for call %s", vapi_call_id[:12])
+                except Exception as e:
+                    logger.error("Failed to save action plan: %s", e)
+
+            # Format result for Vapi
+            results.append({
+                "toolCallId": tool_call_id,
+                "result": json.dumps(plan),
+            })
+        else:
+            logger.debug("Unknown tool call: %s", function_name)
+            results.append({
+                "toolCallId": tool_call_id,
+                "result": json.dumps({"error": f"Unknown function: {function_name}"}),
+            })
+
+    return JSONResponse({"results": results})
+
+
+# ====================================================================
+# FEATURE 3: Real-Time Risk Detection
+# ====================================================================
+
+async def _handle_transcript(message: dict[str, Any]) -> None:
+    """Handle real-time transcript events for risk detection.
+
+    Analyzes the transcript text for risk indicators and updates
+    the call's risk level in the database.
+    """
+    call_data = message.get("call", message)
+    vapi_call_id = call_data.get("id", "")
+
+    if not vapi_call_id:
+        return
+
+    # Extract transcript text
+    transcript_text = message.get("transcript", "")
+
+    # Also check the role — only analyze user/customer messages for risk
+    role = message.get("role", "")
+    if role in ("assistant", "bot", "ai"):
+        return  # Don't flag AI responses as risks
+
+    if not transcript_text:
+        return
+
+    # Run risk detection
+    risk_result = _risk_detector.detect(transcript_text)
+
+    # Only update if meaningful risk found
+    if risk_result.level != RiskLevel.LOW and state.db:
+        try:
+            await state.db.update_call_risk(
+                vapi_call_id=vapi_call_id,
+                risk_level=risk_result.level,
+                risk_type=risk_result.risk_type,
+                risk_reason=risk_result.reason,
+            )
+        except Exception as e:
+            logger.error("Failed to update risk for call %s: %s", vapi_call_id, e)
+
+
+async def _handle_conversation_update(message: dict[str, Any]) -> None:
+    """Handle conversation-update events for risk detection.
+
+    These contain the full conversation so far. We analyze the latest
+    messages for risk indicators.
+    """
+    call_data = message.get("call", message)
+    vapi_call_id = call_data.get("id", "")
+
+    if not vapi_call_id:
+        return
+
+    # Get the conversation messages
+    messages_list = message.get("messages", message.get("artifact", {}).get("messages", []))
+    if not messages_list:
+        return
+
+    # Analyze only user/customer messages for risk
+    user_texts = []
+    for msg in messages_list:
+        role = msg.get("role", "")
+        content = msg.get("content", msg.get("message", ""))
+        if role in ("user", "customer") and content:
+            user_texts.append(content)
+
+    if not user_texts:
+        return
+
+    # Analyze combined user text
+    combined_text = " ".join(user_texts)
+    risk_result = _risk_detector.detect(combined_text)
+
+    if risk_result.level != RiskLevel.LOW and state.db:
+        try:
+            await state.db.update_call_risk(
+                vapi_call_id=vapi_call_id,
+                risk_level=risk_result.level,
+                risk_type=risk_result.risk_type,
+                risk_reason=risk_result.reason,
+            )
+        except Exception as e:
+            logger.error("Failed to update risk from conversation-update: %s", e)
+
+
+# ====================================================================
+# EXISTING: Call Started
+# ====================================================================
 
 async def _handle_call_started(message: dict[str, Any]) -> None:
     """Handle a call-started or status-update event from Vapi.
@@ -120,6 +369,10 @@ async def _handle_call_started(message: dict[str, Any]) -> None:
 
     logger.info("Call started: vapi_id=%s, caller=%s", vapi_call_id, user.masked_phone)
 
+
+# ====================================================================
+# EXISTING: Call Ended
+# ====================================================================
 
 async def _handle_call_ended(message: dict[str, Any]) -> None:
     """Handle end-of-call-report or hang event from Vapi.
@@ -292,6 +545,15 @@ async def _handle_call_ended(message: dict[str, Any]) -> None:
             action_items = analysis.action_items
         except Exception as e:
             logger.error("Call analysis failed: %s", e)
+
+    # Final risk check on full transcript (may escalate risk from real-time detection)
+    if transcript:
+        final_risk = _risk_detector.detect(transcript)
+        if final_risk.level != RiskLevel.LOW:
+            # Use the higher of the two risk levels
+            risk_order = {RiskLevel.LOW: 0, RiskLevel.MEDIUM: 1, RiskLevel.HIGH: 2}
+            if risk_order.get(final_risk.level, 0) > risk_order.get(risk_level, 0):
+                risk_level = final_risk.level
 
     # Final update with AI analysis results
     analysis_data = {

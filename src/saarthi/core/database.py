@@ -23,7 +23,7 @@ from saarthi.models.core import (
     User,
     UserProfile,
 )
-from saarthi.models.enums import CallStatus, CallTopic, MessageRole, RiskLevel
+from saarthi.models.enums import CallStatus, CallTopic, MessageRole, RiskLevel, RiskType
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,23 @@ class Database:
                 logger.info("Dropped NOT NULL constraint on legacy exotel_call_sid column")
             except Exception:
                 pass
+
+            # Migration for intelligence features: add new columns
+            intelligence_columns = [
+                ("risk_type", "TEXT DEFAULT 'none'"),
+                ("risk_reason", "TEXT DEFAULT ''"),
+                ("risk_detected_at", "TEXT"),
+                ("action_plan", "TEXT"),
+                ("action_plan_generated_at", "TEXT"),
+            ]
+            for col_name, col_def in intelligence_columns:
+                try:
+                    await conn.execute(f"ALTER TABLE calls ADD COLUMN {col_name} {col_def};")
+                    logger.info("Added column %s to calls table", col_name)
+                except asyncpg.exceptions.DuplicateColumnError:
+                    pass
+                except Exception as e:
+                    logger.warning("Migration for %s: %s", col_name, e)
 
             # Create index after migration to ensure column exists
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_vapi_id ON calls(vapi_call_id);")
@@ -250,6 +267,12 @@ class Database:
                 value = value.value
             elif key == "risk_level" and isinstance(value, RiskLevel):
                 value = value.value
+            elif key == "risk_type" and isinstance(value, RiskType):
+                value = value.value
+            elif key == "action_plan" and isinstance(value, dict):
+                value = json.dumps(value)
+            elif key in ("risk_detected_at", "action_plan_generated_at") and isinstance(value, datetime):
+                value = value.isoformat()
             set_parts.append(f"{key} = ${param_idx}")
             values.append(value)
             param_idx += 1
@@ -388,6 +411,7 @@ class Database:
                         topic=call.topic.value,
                         duration=call.duration_display,
                         risk_level=call.risk_level.value,
+                        risk_type=call.risk_type.value,
                         status=call.status.value,
                         start_time=call.start_time.isoformat(),
                         user_id=call.user_id,
@@ -417,12 +441,78 @@ class Database:
                         topic=call.topic.value,
                         duration=call.duration_display,
                         risk_level=call.risk_level.value,
+                        risk_type=call.risk_type.value,
                         status=call.status.value,
                         start_time=call.start_time.isoformat(),
                         user_id=call.user_id,
                     )
                 )
             return items
+
+    # -------------------------------------------------------------------
+    # Intelligence features
+    # -------------------------------------------------------------------
+
+    async def get_user_call_history(self, user_id: str, limit: int = 5) -> list[dict]:
+        """Get recent completed calls for building caller memory."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT topic, summary, action_items, start_time, risk_level
+                FROM calls
+                WHERE user_id = $1 AND status = 'completed'
+                ORDER BY start_time DESC
+                LIMIT $2
+            """, user_id, limit)
+            results = []
+            for row in rows:
+                action_items_raw = row["action_items"]
+                if isinstance(action_items_raw, str):
+                    try:
+                        action_items = json.loads(action_items_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        action_items = []
+                else:
+                    action_items = action_items_raw or []
+                results.append({
+                    "topic": row["topic"],
+                    "summary": row["summary"] or "",
+                    "action_items": action_items,
+                    "start_time": row["start_time"],
+                    "risk_level": row["risk_level"],
+                })
+            return results
+
+    async def update_call_risk(
+        self, vapi_call_id: str, risk_level: RiskLevel, risk_type: RiskType, risk_reason: str
+    ) -> None:
+        """Update call risk fields. Only escalates, never downgrades."""
+        risk_order = {RiskLevel.LOW: 0, RiskLevel.MEDIUM: 1, RiskLevel.HIGH: 2}
+        async with self._pool.acquire() as conn:
+            current = await conn.fetchrow(
+                "SELECT risk_level FROM calls WHERE vapi_call_id = $1", vapi_call_id
+            )
+            if not current:
+                return
+            current_level = RiskLevel(current["risk_level"]) if current["risk_level"] else RiskLevel.LOW
+            if risk_order.get(risk_level, 0) <= risk_order.get(current_level, 0):
+                return  # Never downgrade risk
+            now = datetime.utcnow().isoformat()
+            await conn.execute("""
+                UPDATE calls
+                SET risk_level = $1, risk_type = $2, risk_reason = $3, risk_detected_at = $4
+                WHERE vapi_call_id = $5
+            """, risk_level.value, risk_type.value, risk_reason, now, vapi_call_id)
+            logger.info("Risk escalated for %s: %s/%s", vapi_call_id, risk_level.value, risk_type.value)
+
+    async def update_call_action_plan(self, vapi_call_id: str, action_plan: dict) -> None:
+        """Save a generated action plan to the call record."""
+        now = datetime.utcnow().isoformat()
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE calls
+                SET action_plan = $1, action_plan_generated_at = $2
+                WHERE vapi_call_id = $3
+            """, json.dumps(action_plan), now, vapi_call_id)
 
     # -------------------------------------------------------------------
     # Message operations
@@ -525,6 +615,15 @@ class Database:
         else:
             action_items = action_items_raw or []
 
+        # Parse action_plan JSON
+        action_plan_raw = row.get("action_plan")
+        action_plan = None
+        if action_plan_raw and isinstance(action_plan_raw, str):
+            try:
+                action_plan = json.loads(action_plan_raw)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         return Call(
             id=row["id"],
             vapi_call_id=row["vapi_call_id"],
@@ -539,5 +638,10 @@ class Database:
             topic=CallTopic(row["topic"]) if row["topic"] else CallTopic.OTHER,
             risk_level=RiskLevel(row["risk_level"]) if row["risk_level"] else RiskLevel.LOW,
             action_items=action_items,
+            risk_type=RiskType(row.get("risk_type", "none") or "none"),
+            risk_reason=row.get("risk_reason", "") or "",
+            risk_detected_at=datetime.fromisoformat(row["risk_detected_at"]) if row.get("risk_detected_at") else None,
+            action_plan=action_plan,
+            action_plan_generated_at=datetime.fromisoformat(row["action_plan_generated_at"]) if row.get("action_plan_generated_at") else None,
             created_at=datetime.fromisoformat(row["created_at"]),
         )

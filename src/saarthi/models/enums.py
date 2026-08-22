@@ -41,6 +41,19 @@ class RiskLevel(StrEnum):
     HIGH = "high"
 
 
+class RiskType(StrEnum):
+    """Specific risk type detected during a call."""
+
+    NONE = "none"
+    SELF_HARM = "self_harm"
+    SUICIDE = "suicide"
+    MEDICAL_EMERGENCY = "medical_emergency"
+    VIOLENCE = "violence"
+    IMMEDIATE_DANGER = "immediate_danger"
+    FINANCIAL_FRAUD = "financial_fraud"
+    LEGAL_URGENCY = "legal_urgency"
+
+
 class MessageRole(StrEnum):
     """Role of a conversation message participant."""
 

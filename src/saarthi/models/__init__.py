@@ -1,6 +1,6 @@
 """Saarthi core models."""
 
-from saarthi.models.enums import CallStatus, CallTopic, MessageRole, RiskLevel
+from saarthi.models.enums import CallStatus, CallTopic, MessageRole, RiskLevel, RiskType
 from saarthi.models.core import (
     Call,
     CallAnalysis,
@@ -23,6 +23,8 @@ __all__ = [
     "DashboardStats",
     "MessageRole",
     "RiskLevel",
+    "RiskType",
     "User",
     "UserProfile",
 ]
+

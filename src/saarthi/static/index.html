@@ -792,6 +792,65 @@
             font-weight: 600;
         }
         .profile-meta span { display: flex; align-items: center; gap: 6px; }
+
+        /* Intelligence feature styles */
+        .active-call-card.high-risk {
+            border-color: var(--danger);
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+            animation: risk-pulse 2s infinite alternate;
+        }
+        @keyframes risk-pulse {
+            from { box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15); }
+            to { box-shadow: 0 4px 20px rgba(220, 38, 38, 0.35); }
+        }
+        .active-call-card.medium-risk {
+            border-color: var(--warning);
+            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.15);
+        }
+        .risk-type-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 6px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .risk-type-badge.high { background: var(--danger-bg); color: var(--danger); }
+        .risk-type-badge.medium { background: var(--warning-bg); color: var(--warning); }
+        .intelligence-panel {
+            background: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg); padding: 28px;
+            box-shadow: var(--shadow-sm); margin-bottom: 24px;
+        }
+        .intelligence-panel h3 {
+            font-size: 15px; color: var(--text-primary);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 20px; font-weight: 800;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .intelligence-panel h3 i { color: var(--accent-primary); }
+        .intelligence-panel.risk-high { border-left: 4px solid var(--danger); }
+        .intelligence-panel.risk-high h3 i { color: var(--danger); }
+        .intelligence-panel.risk-medium { border-left: 4px solid var(--warning); }
+        .intelligence-panel.risk-medium h3 i { color: var(--warning); }
+        .plan-step {
+            display: flex; align-items: flex-start; gap: 16px;
+            padding: 14px 0; border-bottom: 1px solid var(--border-color);
+        }
+        .plan-step:last-child { border-bottom: none; }
+        .plan-step-num {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--accent-primary); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 14px; flex-shrink: 0;
+        }
+        .plan-step-content { flex: 1; }
+        .plan-step-title { font-weight: 600; font-size: 15px; color: var(--text-primary); }
+        .plan-step-priority {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 700; margin-top: 4px;
+        }
+        .plan-step-priority.HIGH { background: var(--danger-bg); color: var(--danger); }
+        .plan-step-priority.MEDIUM { background: var(--warning-bg); color: var(--warning); }
+        .plan-step-priority.LOW { background: var(--success-bg); color: var(--success); }
     </style>
 </head>
 <body>
@@ -1217,16 +1276,18 @@
                 const mins = Math.floor(elapsed / 60);
                 const secs = elapsed % 60;
 
+                const riskClass = call.risk_level === 'high' ? 'high-risk' : (call.risk_level === 'medium' ? 'medium-risk' : '');
+                const riskTypeLabel = call.risk_type && call.risk_type !== 'none' ? call.risk_type.replace(/_/g, ' ') : '';
                 html += `
-                    <div class="active-call-card" onclick="navigate('call', {id: '${call.id}'})">
+                    <div class="active-call-card ${riskClass}" onclick="navigate('call', {id: '${call.id}'})">
                         <div class="active-call-info">
                             <div class="active-call-field">
                                 <div class="label">Caller</div>
                                 <div class="value">${call.caller_phone}</div>
                             </div>
                             <div class="active-call-field">
-                                <div class="label">Status</div>
-                                <div class="value">${statusBadge(call.status)}</div>
+                                <div class="label">Risk</div>
+                                <div class="value">${riskBadge(call.risk_level)}${riskTypeLabel ? ` <span class="risk-type-badge ${call.risk_level}">${riskTypeLabel}</span>` : ''}</div>
                             </div>
                             <div class="active-call-field">
                                 <div class="label">Session Start</div>
@@ -1286,12 +1347,34 @@
                 try { actionItems = JSON.parse(actionItems); } catch(e) { actionItems = []; }
             }
 
+            // Format risk type for display
+            const riskTypeDisplay = (call.risk_type && call.risk_type !== 'none') ? call.risk_type.replace(/_/g, ' ').toUpperCase() : '';
+            const riskPanelClass = call.risk_level === 'high' ? 'risk-high' : (call.risk_level === 'medium' ? 'risk-medium' : '');
+
             let html = `
                 <div class="page-header">
                     <h2>Interaction Record</h2>
                     <p>Reference: ${call.vapi_call_id}</p>
-                </div>
+                </div>`;
 
+            // --- Risk Assessment Panel (if non-low) ---
+            if (call.risk_level !== 'low') {
+                html += `
+                <div class="intelligence-panel ${riskPanelClass}">
+                    <h3><i data-lucide="shield-alert"></i> Risk Assessment</h3>
+                    <div class="detail-grid" style="margin-bottom: 0;">
+                        <div class="detail-field">
+                            <div class="label">Risk Level</div>
+                            <div class="value">${riskBadge(call.risk_level)}</div>
+                        </div>
+                        ${riskTypeDisplay ? `<div class="detail-field"><div class="label">Risk Type</div><div class="value"><span class="risk-type-badge ${call.risk_level}">${riskTypeDisplay}</span></div></div>` : ''}
+                        ${call.risk_reason ? `<div class="detail-field"><div class="label">Reason</div><div class="value">${call.risk_reason}</div></div>` : ''}
+                        ${call.risk_detected_at ? `<div class="detail-field"><div class="label">Detected</div><div class="value">${formatTime(call.risk_detected_at)}</div></div>` : ''}
+                    </div>
+                </div>`;
+            }
+
+            html += `
                 <div class="detail-grid">
                     <div class="detail-card">
                         <h3><i data-lucide="info"></i> Session Details</h3>
@@ -1340,6 +1423,29 @@
                         </div>` : ''}
                     </div>
                 </div>`;
+
+            // --- Action Plan Panel ---
+            if (call.action_plan && call.action_plan.action_items && call.action_plan.action_items.length > 0) {
+                html += `
+                <div class="intelligence-panel">
+                    <h3><i data-lucide="clipboard-list"></i> Generated Action Plan</h3>
+                    ${call.action_plan.summary ? `<p style="margin-bottom: 16px; color: var(--text-secondary); font-weight: 500;">${call.action_plan.summary}</p>` : ''}
+                    <div>`;
+                for (const item of call.action_plan.action_items) {
+                    html += `
+                    <div class="plan-step">
+                        <div class="plan-step-num">${item.step}</div>
+                        <div class="plan-step-content">
+                            <div class="plan-step-title">${item.title}</div>
+                            <span class="plan-step-priority ${item.priority}">${item.priority}</span>
+                        </div>
+                    </div>`;
+                }
+                html += `</div>
+                    ${call.action_plan.professional_help_recommended ? '<p style="margin-top: 16px; padding: 12px 16px; background: var(--warning-bg); border-radius: var(--radius-md); color: var(--warning); font-weight: 700; font-size: 14px;"><i data-lucide="alert-triangle" style="width:16px; display:inline;"></i> Professional consultation recommended</p>' : ''}
+                    ${call.action_plan_generated_at ? `<p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">Generated: ${formatTime(call.action_plan_generated_at)}</p>` : ''}
+                </div>`;
+            }
 
             // Recording
             if (call.recording_url) {

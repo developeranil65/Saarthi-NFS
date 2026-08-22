@@ -28,6 +28,7 @@ class AppConfig:
 
     # --- Vapi ---
     vapi_api_key: str = ""
+    vapi_assistant_id: str = ""
 
     # --- Saarthi ---
     saarthi_phone_number: str = ""
@@ -56,6 +57,7 @@ class AppConfig:
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
             model_name=os.getenv("MODEL_NAME", "gemini-2.0-flash"),
             vapi_api_key=os.getenv("VAPI_API_KEY", ""),
+            vapi_assistant_id=os.getenv("VAPI_ASSISTANT_ID", ""),
             saarthi_phone_number=os.getenv("SAARTHI_PHONE_NUMBER", ""),
             database_url=os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/saarthi_db"),
         )
