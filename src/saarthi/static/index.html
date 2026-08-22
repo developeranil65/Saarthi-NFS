@@ -1447,14 +1447,6 @@
                 </div>`;
             }
 
-            // Recording
-            if (call.recording_url) {
-                html += `
-                    <div class="detail-card recording-player" style="margin-bottom: 24px;">
-                        <h3><i data-lucide="mic"></i> Audio Log</h3>
-                        <audio controls src="${call.recording_url}" preload="metadata"></audio>
-                    </div>`;
-            }
 
             // Conversation
             if (messages.length > 0) {
