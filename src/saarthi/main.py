@@ -107,19 +107,28 @@ app.include_router(webhooks.router)
 static_dir = Path(__file__).parent / "static"
 
 
-@app.get("/", tags=["Dashboard"], response_model=None)
-async def serve_dashboard():
-    """Serve the single-page application (SPA) dashboard.
+@app.get("/", tags=["Landing"], response_model=None)
+async def serve_landing():
+    """Serve the landing page."""
+    landing_path = static_dir / "landing.html"
+    if landing_path.exists():
+        return FileResponse(str(landing_path))
+    # Fallback to index if landing doesn't exist yet
+    index_path = static_dir / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return JSONResponse({"message": "Saarthi is running."}, status_code=200)
 
-    Returns:
-        The index.html file if it exists, otherwise a generic JSON status response.
-    """
+
+@app.get("/dashboard", tags=["Dashboard"], response_model=None)
+async def serve_dashboard():
+    """Serve the single-page application (SPA) dashboard."""
     index_path = static_dir / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
     return JSONResponse(
-        {"message": "Saarthi is running. Dashboard not found."},
-        status_code=200,
+        {"message": "Dashboard not found."},
+        status_code=404,
     )
 
 

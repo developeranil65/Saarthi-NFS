@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saarthi - AI Phone Guidance</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root {
+            /* Executive Emerald Palette */
+            --bg-primary: #f8fafc;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            
+            --accent-primary: #059669; /* Emerald 600 */
+            --accent-hover: #047857; /* Emerald 700 */
+            --accent-light: #d1fae5; /* Emerald 100 */
+            
+            --border-color: #e2e8f0;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Navigation */
+        nav {
+            padding: 24px 48px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--accent-primary);
+        }
+
+        .btn-outline {
+            padding: 10px 20px;
+            border: 2px solid var(--accent-primary);
+            border-radius: 8px;
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-outline:hover {
+            background: var(--accent-light);
+        }
+
+        /* Hero Section */
+        .hero {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 80px 24px;
+            background: linear-gradient(135deg, #f8fafc 0%, #ecfdf5 100%);
+        }
+
+        .hero h1 {
+            font-size: 56px;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 24px;
+            max-width: 800px;
+            color: #0f172a;
+        }
+
+        .hero h1 span {
+            color: var(--accent-primary);
+        }
+
+        .hero p {
+            font-size: 20px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin-bottom: 48px;
+            font-weight: 500;
+        }
+
+        .phone-box {
+            background: var(--bg-card);
+            padding: 40px 60px;
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-xl);
+            border: 2px solid var(--accent-light);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .phone-icon-wrapper {
+            width: 80px;
+            height: 80px;
+            background: var(--accent-light);
+            color: var(--accent-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+
+        .phone-icon-wrapper i {
+            width: 40px;
+            height: 40px;
+        }
+
+        .phone-label {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .phone-number {
+            font-size: 48px;
+            font-weight: 800;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+        
+        .phone-number:hover {
+            color: var(--accent-primary);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            max-width: 1000px;
+            margin: 64px auto 0;
+        }
+
+        .feature-card {
+            background: transparent;
+            padding: 24px;
+            text-align: left;
+        }
+
+        .feature-card i {
+            color: var(--accent-primary);
+            width: 32px;
+            height: 32px;
+            margin-bottom: 16px;
+        }
+
+        .feature-card h3 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .feature-card p {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-card);
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 40px; }
+            .phone-number { font-size: 32px; }
+            .features { grid-template-columns: 1fr; }
+            nav { padding: 16px 24px; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="brand">
+            <i data-lucide="scale"></i>
+            Saarthi
+        </div>
+        <a href="/dashboard" class="btn-outline">
+            <i data-lucide="layout-dashboard"></i>
+            Operations Dashboard
+        </a>
+    </nav>
+
+    <main class="hero">
+        <h1>AI-Powered Guidance for <span>Everyone</span></h1>
+        <p>No app to install. No prompts to type. Just pick up your phone and talk naturally in Hindi, Hinglish, or English.</p>
+
+        <div class="phone-box">
+            <div class="phone-icon-wrapper">
+                <i data-lucide="phone-call"></i>
+            </div>
+            <div class="phone-label">Call Now (Toll Free)</div>
+            <a href="tel:+13802279014" class="phone-number">+1 (380) 227 9014</a>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <i data-lucide="languages"></i>
+                <h3>Speaks Your Language</h3>
+                <p>Communicate comfortably in Hindi, English, or a mix of both. Saarthi understands context and nuance seamlessly.</p>
+            </div>
+            <div class="feature-card">
+                <i data-lucide="clipboard-list"></i>
+                <h3>Actionable Advice</h3>
+                <p>Get clear, step-by-step guidance on government schemes, legal matters, medical emergencies, and everyday problems.</p>
+            </div>
+            <div class="feature-card">
+                <i data-lucide="brain-circuit"></i>
+                <h3>Smart Memory</h3>
+                <p>Saarthi remembers your previous calls, meaning you don't have to explain your situation from scratch every time.</p>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 Saarthi Intelligence Services. All rights reserved.</p>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
