@@ -9,6 +9,9 @@ RUN pip install .
 # Copy the rest of the application
 COPY . .
 
+# Set PYTHONPATH so python can find the saarthi module inside src/
+ENV PYTHONPATH=/app/src
+
 # Hugging Face Spaces expose port 7860
 EXPOSE 7860
 
