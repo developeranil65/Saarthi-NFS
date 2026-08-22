@@ -2,8 +2,21 @@
 
 **AI-powered phone guidance service for common people who may not know how to use ChatGPT or other AI tools.**
 
-> [!IMPORTANT]
-> **Try it out now!** Call **+1 (380) 227 9014** to speak with Saarthi in Hindi, Hinglish, or English.
+<div align="center">
+  <br>
+  <table border="0" cellpadding="20" cellspacing="0" width="100%">
+    <tr>
+      <td align="center" style="background-color: #f0fdf4; border: 2px solid #22c55e; border-radius: 12px; padding: 24px;">
+        <h2 style="color: #166534; margin: 0 0 12px 0;">📞 Try Saarthi Now!</h2>
+        <p style="font-size: 1.25em; margin: 0 0 12px 0; color: #14532d;">
+          Just pick up your phone and call <strong><a href="tel:+13802279014" style="color: #15803d; text-decoration: none;">+1 (380) 227 9014</a></strong>
+        </p>
+        <p style="color: #166534; margin: 0;"><em>Speak naturally in Hindi, Hinglish, or English. No app needed.</em></p>
+      </td>
+    </tr>
+  </table>
+  <br>
+</div>
 
 > Pick up your normal phone → Call Saarthi → Talk naturally in Hindi, Hinglish, or English → Get guidance
 
